@@ -51,7 +51,7 @@ export default function AdminPage() {
     <main className="mx-auto max-w-5xl px-4 py-12">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">리드 관리</h1>
-        <Link href="/" className="text-sm text-gray-400 underline">
+        <Link href="/contact" className="text-sm text-gray-400 underline">
           제출 폼으로
         </Link>
       </div>
