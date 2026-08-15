@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { Lead } from "@/lib/db";
+import { db, Lead } from "@/lib/db";
 import { sendNewLeadNotification } from "@/lib/notify";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
-  const leads = db
-    .prepare("SELECT * FROM leads ORDER BY created_at DESC")
-    .all() as unknown as Lead[];
+  const sql = await db();
+  const leads = (await sql`
+    SELECT * FROM leads ORDER BY created_at DESC
+  `) as unknown as Lead[];
   return NextResponse.json({ leads });
 }
 
@@ -25,19 +28,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const stmt = db.prepare(
-    `INSERT INTO leads (name, email, phone, message) VALUES (?, ?, ?, ?)`
-  );
-  const result = stmt.run(
-    name.trim(),
-    email.trim(),
-    phone?.trim() || null,
+  const sql = await db();
+  const rows = (await sql`
+    INSERT INTO leads (name, email, phone, message)
+    VALUES (${name.trim()}, ${email.trim()}, ${phone?.trim() || null}, ${
     message?.trim() || null
-  );
-
-  const lead = db
-    .prepare("SELECT * FROM leads WHERE id = ?")
-    .get(result.lastInsertRowid) as unknown as Lead;
+  })
+    RETURNING *
+  `) as unknown as Lead[];
+  const lead = rows[0];
 
   await sendNewLeadNotification(lead);
 

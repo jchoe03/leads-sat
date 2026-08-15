@@ -1,36 +1,38 @@
-import { DatabaseSync } from "node:sqlite";
-import path from "path";
-import fs from "fs";
+import { neon, NeonQueryFunction } from "@neondatabase/serverless";
 
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+let sqlClient: NeonQueryFunction<false, false> | undefined;
+let schemaReady: Promise<void> | undefined;
+
+function getSql() {
+  if (!sqlClient) {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL 환경변수가 설정되지 않았습니다.");
+    }
+    sqlClient = neon(databaseUrl);
+  }
+  return sqlClient;
 }
 
-const dbPath = path.join(dataDir, "leads.db");
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __leadsDb: DatabaseSync | undefined;
+export async function db() {
+  const sql = getSql();
+  if (!schemaReady) {
+    schemaReady = sql`
+      CREATE TABLE IF NOT EXISTS leads (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        message TEXT,
+        status TEXT NOT NULL DEFAULT 'new',
+        created_at TEXT NOT NULL DEFAULT now()::text,
+        updated_at TEXT NOT NULL DEFAULT now()::text
+      )
+    `.then(() => undefined);
+  }
+  await schemaReady;
+  return sql;
 }
-
-const db = global.__leadsDb ?? new DatabaseSync(dbPath);
-if (process.env.NODE_ENV !== "production") {
-  global.__leadsDb = db;
-}
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS leads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    phone TEXT,
-    message TEXT,
-    status TEXT NOT NULL DEFAULT 'new',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
 
 export interface Lead {
   id: number;
@@ -42,5 +44,3 @@ export interface Lead {
   created_at: string;
   updated_at: string;
 }
-
-export default db;
