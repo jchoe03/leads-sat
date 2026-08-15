@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { Lead } from "@/lib/db";
+import { db, Lead } from "@/lib/db";
 
-function getLead(id: string) {
-  return db.prepare("SELECT * FROM leads WHERE id = ?").get(id) as unknown as
-    | Lead
-    | undefined;
+export const dynamic = "force-dynamic";
+
+async function getLead(id: string) {
+  const sql = await db();
+  const rows = (await sql`
+    SELECT * FROM leads WHERE id = ${id}
+  `) as unknown as Lead[];
+  return rows[0] as Lead | undefined;
 }
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const lead = getLead(params.id);
+  const lead = await getLead(params.id);
   if (!lead) {
     return NextResponse.json({ error: "리드를 찾을 수 없습니다." }, { status: 404 });
   }
@@ -22,7 +26,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const existing = getLead(params.id);
+  const existing = await getLead(params.id);
   if (!existing) {
     return NextResponse.json({ error: "리드를 찾을 수 없습니다." }, { status: 404 });
   }
@@ -37,25 +41,26 @@ export async function PATCH(
     return NextResponse.json({ error: "email은 비워둘 수 없습니다." }, { status: 400 });
   }
 
-  db.prepare(
-    `UPDATE leads SET
-      name = ?,
-      email = ?,
-      phone = ?,
-      message = ?,
-      status = ?,
-      updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    name !== undefined ? name.trim() : existing.name,
-    email !== undefined ? email.trim() : existing.email,
-    phone !== undefined ? phone?.trim() || null : existing.phone,
-    message !== undefined ? message?.trim() || null : existing.message,
-    status !== undefined ? status : existing.status,
-    params.id
-  );
+  const nextName = name !== undefined ? name.trim() : existing.name;
+  const nextEmail = email !== undefined ? email.trim() : existing.email;
+  const nextPhone = phone !== undefined ? phone?.trim() || null : existing.phone;
+  const nextMessage =
+    message !== undefined ? message?.trim() || null : existing.message;
+  const nextStatus = status !== undefined ? status : existing.status;
 
-  const lead = getLead(params.id);
+  const sql = await db();
+  await sql`
+    UPDATE leads SET
+      name = ${nextName},
+      email = ${nextEmail},
+      phone = ${nextPhone},
+      message = ${nextMessage},
+      status = ${nextStatus},
+      updated_at = now()::text
+    WHERE id = ${params.id}
+  `;
+
+  const lead = await getLead(params.id);
   return NextResponse.json({ lead });
 }
 
@@ -63,11 +68,12 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const existing = getLead(params.id);
+  const existing = await getLead(params.id);
   if (!existing) {
     return NextResponse.json({ error: "리드를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  db.prepare("DELETE FROM leads WHERE id = ?").run(params.id);
+  const sql = await db();
+  await sql`DELETE FROM leads WHERE id = ${params.id}`;
   return NextResponse.json({ ok: true });
 }
