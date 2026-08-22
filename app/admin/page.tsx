@@ -14,6 +14,13 @@ interface Lead {
   updated_at: string;
 }
 
+interface LeadNote {
+  id: number;
+  lead_id: number;
+  content: string;
+  created_at: string;
+}
+
 const STATUS_OPTIONS = ["new", "contacted", "converted", "rejected"];
 
 export default function AdminPage() {
@@ -21,6 +28,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [notesLead, setNotesLead] = useState<Lead | null>(null);
 
   async function loadLeads() {
     setLoading(true);
@@ -89,6 +97,12 @@ export default function AdminPage() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button
+                      onClick={() => setNotesLead(lead)}
+                      className="mr-3 text-emerald-600 underline"
+                    >
+                      메모
+                    </button>
+                    <button
                       onClick={() => setEditingLead(lead)}
                       className="mr-3 text-blue-600 underline"
                     >
@@ -116,7 +130,117 @@ export default function AdminPage() {
           onSaved={handleSaved}
         />
       )}
+
+      {notesLead && (
+        <NotesModal lead={notesLead} onClose={() => setNotesLead(null)} />
+      )}
     </main>
+  );
+}
+
+function NotesModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+  const [notes, setNotes] = useState<LeadNote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [content, setContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadNotes() {
+    setLoading(true);
+    const res = await fetch(`/api/leads/${lead.id}/notes`);
+    const data = await res.json();
+    setNotes(data.notes);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim()) return;
+    setSaving(true);
+    setError("");
+
+    const res = await fetch(`/api/leads/${lead.id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+
+    setSaving(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "메모 저장 중 오류가 발생했습니다.");
+      return;
+    }
+
+    const data = await res.json();
+    setNotes((prev) => [data.note, ...prev]);
+    setContent("");
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">{lead.name}님 메모</h2>
+          <button
+            onClick={onClose}
+            aria-label="닫기"
+            className="text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-2">
+          <textarea
+            rows={3}
+            placeholder="메모를 입력하세요"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-500 focus:outline-none"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saving || !content.trim()}
+              className="rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
+            >
+              {saving ? "저장 중..." : "메모 추가"}
+            </button>
+          </div>
+        </form>
+
+        <div className="mt-4 max-h-64 space-y-3 overflow-y-auto border-t border-gray-100 pt-4">
+          {loading ? (
+            <p className="text-sm text-gray-500">불러오는 중...</p>
+          ) : notes.length === 0 ? (
+            <p className="text-sm text-gray-500">등록된 메모가 없습니다.</p>
+          ) : (
+            notes.map((note) => (
+              <div key={note.id} className="rounded-md bg-gray-50 p-3 text-sm">
+                <p className="whitespace-pre-wrap">{note.content}</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  {note.created_at}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
